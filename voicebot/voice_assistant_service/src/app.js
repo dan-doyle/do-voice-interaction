@@ -10,7 +10,7 @@ import fs from 'fs'
 import path from 'path'
 import favicon from 'serve-favicon'
 
-import { processAudioHotword, processAudioCommand, processTextCommand } from './routes/voice_assistant.js'
+import { processAudioHotword, processAudioCommand, processTextCommand, processPossibleInterruption, testingProcessTextCommand, testingProcessAudioCommand } from './routes/voice_assistant.js'
 
 if (!fs.existsSync('./config/config.json')) {
   console.error('Could not find the configuration file: \'./config/config.json\'')
@@ -44,10 +44,30 @@ app.use('/', express.static(path.join(__dirname, 'public')))
  */
 export function setupClient (client) {
   console.log('Client connected\n')
+  console.log(`Attempting to connect to Interruption service at ${global.config.services.interruptionDetectionService}`);
+  const interruptionServiceConnection = Client(global.config.services.interruptionDetectionService, { transports: ['websocket'] });
+  interruptionServiceConnection.on('connect', () => {
+    console.log(`Connected to Interruption service at ${global.config.services.interruptionDetectionService}`);
+  });
+  interruptionServiceConnection.on('connect_error', (error) => {
+    console.log(`Connection Error to Interruption service: ${error}`);
+  });  
+  interruptionServiceConnection.on('interrupt-query-response', (data) => {
+    /* should receive the following format:
+    {
+      isInterrupt: true,
+      id: id
+    }
+    */
+    if (data.isInterrupt) {
+      client.emit('interrupt-detected', {id: data.id});
+    }
+  });
 
   client.on('audio-hotword', (request) => processAudioHotword(client, request))
   client.on('audio-command', (request) => processAudioCommand(client, request))
   client.on('text-command', (request) => processTextCommand(client, request))
+  client.on('audio-interrupt', (request) => processPossibleInterruption(client, interruptionServiceConnection, request))
 }
 
 export default app

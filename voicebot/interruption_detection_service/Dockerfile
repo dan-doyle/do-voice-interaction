@@ -5,7 +5,6 @@ WORKDIR /usr/src/app
 
 RUN /usr/local/bin/python -m pip install --upgrade pip
 
-# see if it works without ffmpeg install
 RUN apt update && apt install -y ffmpeg
 
 COPY . .
