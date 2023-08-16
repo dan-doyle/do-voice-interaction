@@ -2,7 +2,7 @@ import io from "socket.io-client";
 
 import {v4 as uuidv4} from "uuid";
 
-import {addResponse, hotwordResponse, foundHotword, changeStatus} from "./media";
+import {addResponse, hotwordResponse, foundHotword, changeStatus, userInterruptDetected} from "./media";
 import {PlayerStatus} from "./const";
 
 export function setupSocket(backendUrl, dispatch) {
@@ -27,6 +27,10 @@ export function setupSocket(backendUrl, dispatch) {
     });
     window.socket.on("hotword", () => {
         dispatch(foundHotword({value: true}))
+    });
+    window.socket.on("interrupt-detected", (data) => {
+        console.log("USER INTERRUPTION DETECTED")
+        dispatch(userInterruptDetected({value: true, id: data.id}))
     });
     window.socket.on("disconnect", () => console.log("Socket disconnected ..."));
 }
@@ -62,4 +66,13 @@ export function submitCommand(payload) {
         });
         dispatch(changeStatus({status: PlayerStatus.PROCESSING}));
     };
+}
+
+export function queryInterruption(payload) { // introduce payload param
+    console.log('QUERYING VA SERVICE TO CHECK FOR INTERRUPTION')
+    window.socket.emit("audio-interrupt", {
+        type: "command",
+        ...payload,
+        date: payload.date || new Date()
+    });
 }

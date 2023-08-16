@@ -3,7 +3,7 @@ import PropTypes from "prop-types";
 import {connect} from "react-redux";
 import {Button, Icon} from "semantic-ui-react";
 
-import {changeStatus, hotwordResponse, foundHotword} from "../reducers/media";
+import {changeStatus, hotwordResponse, foundHotword, userInterruptDetected} from "../reducers/media";
 import {submitHotwordRecording, submitRecording} from "../reducers/socket";
 import {setupAudioRecorder, setupHark} from "../util";
 import {PlayerStatus} from "../reducers/const";
@@ -14,8 +14,8 @@ import "./SimpleRecorder.css";
 class SimpleRecorder extends React.Component {
     constructor(props) {
         super(props);
-
-        this.state = {recorder: null, hark: null, backgroundRecorder: null, backgroundHark: null};
+        this.overlapSpeech = false // no need to include in state, unlike recordings which needs a re-render when changed
+        this.state = {recorder: null, hark: null, backgroundRecorder: null, backgroundHark: null, interruptRecorder: null, interruptHark: null, recordings: null};
     }
 
     componentDidMount() {
@@ -28,7 +28,23 @@ class SimpleRecorder extends React.Component {
             if (this.props.status === PlayerStatus.IDLE) {
                 this.listenForHotword()
             }
+            if (this.props.status === PlayerStatus.RESPONDING) {
+                this.listenForInterruption();
+                this.setState({recordings: null}) // clear out recordings from any previous turn
+            }
+            if (prevProps.status == PlayerStatus.RESPONDING && !this.overlapSpeech) {
+                // Only if no interruption related recording is taking place, we clear hark and recorder if there is one
+                if (this.state.interruptRecorder) {
+                    // appears this kills the recorder before it can send off the recording, 
+                    // perhaps add a new element to ensure it's finished processing
+                    this.state.interruptRecorder.destroy();
+                    this.setState({interruptRecorder: null});
+                }
+                this.state.interruptHark.stop();
+                this.setState({interruptHark: null});
+            }
         }
+    
         if (prevProps.receivedHotwordRes != this.props.receivedHotwordRes || 
                 prevProps.detectedHotword != this.props.detectedHotword) {
             if (this.props.detectedHotword) {
@@ -39,6 +55,20 @@ class SimpleRecorder extends React.Component {
             }
 
             this.props.dispatch(hotwordResponse(false));
+        }
+        if (this.props.isInterrupt.value && this.state.recordings) {
+            // send the recording corresponding to id in isInterrupt
+            const targetRecording = this.state.recordings.find(
+                recording => recording.id === this.props.isInterrupt.id
+            );
+            if (targetRecording) {  // if the recording with the matching id is found
+                this.props.dispatch(submitRecording(targetRecording)); // start process of creating next turn of conversation
+                // interruption officially over
+                this.props.dispatch(userInterruptDetected({value: false, id: null}));
+            } else {
+                console.warn('Recording with matching ID not found.');
+            }
+            // recordings will be cleared when the chatbot status returns to RECORDING for the next turn
         }
     }
 
@@ -143,6 +173,79 @@ class SimpleRecorder extends React.Component {
         this.listenForHotword()
     }
 
+    listenForInterruption() {
+        if (!this.state.interruptRecorder) {
+            setupAudioRecorder(true, queryInterruption).then(interruptRecorder => {
+                this.setState({interruptRecorder});
+            });
+        }
+        if (!this.state.interruptHark) {
+            setupHark().then(interruptHark => {
+                this.setState({interruptHark});
+                interruptHark.on("speaking", () => {
+                    this.state.interruptRecorder.startRecording();
+                    console.log("Interruption speech detected by hark, starting recording");
+                    this.overlapSpeech = true;
+                });
+
+                interruptHark.on("stopped_speaking", () => {
+                    // Logic: add audio to recordings and if RESPONDING has finished by the time this is done, clean up
+                    this.state.interruptRecorder.stopRecording(() => {
+                        this.state.interruptRecorder.getDataURL((audioDataURL) => {
+                            // START TESTING FOR BASE64 of final audio
+                            function saveStringToFile(content, filename) {
+                                const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+                                const a = document.createElement('a');
+                                a.href = URL.createObjectURL(blob);
+                                a.download = filename || 'full_interruption.txt';
+                                document.body.appendChild(a);
+                                a.click();
+                                document.body.removeChild(a);
+                                URL.revokeObjectURL(a.href);
+                            }
+                            // saveStringToFile(audioDataURL.split(",").pop())
+                            // END TESTING FOR BASE64 of final audio
+
+                            
+                            this.setState(prevState => {
+                                // Create the new recording
+                                const newRecording = {
+                                    id: this.state.interruptRecorder.getInterruptId(),
+                                    audio: {
+                                        type: prevState.interruptRecorder.getBlob().type || "audio/wav",
+                                        sampleRate: prevState.interruptRecorder.getSampleRate(), // these are now getter method calls rather than attributes of the direct recorder
+                                        bufferSize: prevState.interruptRecorder.getBufferSize(),
+                                        data: audioDataURL.split(",").pop()
+                                    }
+                                };
+                                const updatedRecordings = prevState.recordings ? [...prevState.recordings, newRecording] : [newRecording];
+                                return { recordings: updatedRecordings };
+                            });
+
+                            // All below code within callback placed here to allow the above async code to finish, it ,must be ran after
+                            this.overlapSpeech = false;
+
+                            this.state.interruptRecorder.destroy(); // these two lines can be redundant if we make overlapSpeech part of state
+                            this.setState({interruptRecorder: null});
+
+                            // if playback has paused i.e. not RESPONDING, we kill hark as we are no longer in interrupt territory
+                            if (this.props.status != PlayerStatus.RESPONDING) {
+                                // if we enter here, this means that the other way of killing the hark and recorder has been bypassed
+                                    // when RESPONDING ends, we only clean up if not listening, which we are right now !
+                                this.state.interruptHark.stop();
+                                this.setState({interruptHark: null});
+                            } else {
+                                setupAudioRecorder(true, queryInterruption).then(interruptRecorder => {
+                                    this.setState({interruptRecorder});
+                                });
+                            }
+                        });
+                    });
+                });
+            });
+        }
+    }
+
     recordColor(status) {
         switch (status) {
             case PlayerStatus.LISTENING:
@@ -169,6 +272,6 @@ SimpleRecorder.propTypes = {
     dispatch: PropTypes.func
 };
 
-const mapStateToProps = state => ({status: state.media.status, receivedHotwordRes: state.media.receivedHotwordRes, detectedHotword: state.media.detectedHotword});
+const mapStateToProps = state => ({status: state.media.status, receivedHotwordRes: state.media.receivedHotwordRes, detectedHotword: state.media.detectedHotword, isInterrupt: state.media.isInterrupt, queryInterruption });
 
 export default connect(mapStateToProps)(SimpleRecorder);
