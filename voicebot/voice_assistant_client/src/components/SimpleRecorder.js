@@ -4,7 +4,7 @@ import {connect} from "react-redux";
 import {Button, Icon} from "semantic-ui-react";
 
 import {changeStatus, hotwordResponse, foundHotword, userInterruptDetected} from "../reducers/media";
-import {submitHotwordRecording, submitRecording} from "../reducers/socket";
+import {submitHotwordRecording, submitRecording, queryInterruption} from "../reducers/socket";
 import {setupAudioRecorder, setupHark} from "../util";
 import {PlayerStatus} from "../reducers/const";
 

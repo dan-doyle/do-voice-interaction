@@ -54,14 +54,16 @@ services:
 
 
   do-voice-dialog-manager-service:
-    image: rasa/rasa:2.8.11-full
+    image: dsi-icl/do-voice-dialog-manager-service:latest
     container_name: do-voice-dialog-manager-service
     
     volumes:
-      - ./dialog_manager_service/models:/app/models:ro
-      - ./dialog_manager_service/config/credentials.docker.yml:/app/config/credentials.yml:ro
-      - ./dialog_manager_service/config/endpoints.docker.yml:/app/config/endpoints.yml:ro
-    command: ["run","-m","/app/models", "--enable-api", "--endpoints","/app/config/endpoints.yml","--credentials","/app/config/credentials.yml"]
+      - ./dialog_manager_service/models:/app/models:rw
+      - ./dialog_manager_service/config/credentials.docker.yml:/app/config/credentials.yml:rw
+      - ./dialog_manager_service/config/endpoints.docker.yml:/app/config/endpoints.yml:rw
+    build: 
+      context: .
+      dockerfile: dialog_manager_service/manager_service.Dockerfile
 
 
   do-voice-dialog-manager-actions-service:

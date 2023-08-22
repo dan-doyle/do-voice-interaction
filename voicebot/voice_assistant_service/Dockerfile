@@ -1,4 +1,5 @@
-FROM node:lts-alpine as builder
+# FROM node:lts-alpine as builder
+FROM node:16 as builder
 LABEL maintainer="aurelie.beaugeard20@imperial.ac.uk"
 
 WORKDIR /code/backend
