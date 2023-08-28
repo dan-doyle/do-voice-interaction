@@ -22,7 +22,7 @@ services:
   #   volumes:
   #     - "./stt_service/config/config.json:/app/config/config.json:ro"
 
-  # do-voice-tts_cereproc:
+  do-voice-tts_cereproc:
     image: dsi-icl/do-voice-tts-cereproc:latest
     container_name: do-voice-tts-cereproc
     build: tts_cereproc/
@@ -67,7 +67,7 @@ services:
   do-voice-dialog-manager-actions-service:
     image: dsi-icl/do-voice-dialog-manager-actions-service:latest
     container_name: do-voice-dialog-manager-actions-service
-    build: 
+    build:
       context: .
       dockerfile: dialog_manager_service/actions_service.Dockerfile
 

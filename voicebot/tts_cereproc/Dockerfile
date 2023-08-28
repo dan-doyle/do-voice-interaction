@@ -10,6 +10,7 @@ RUN npm install && npm run build
 # The optimized docker image
 FROM node:10.19-alpine
 
+
 ENV APPLICATION_PATH /app
 ENV APPLICATION_USER user
 # ENV LS_LIBRARY_PATH 
